@@ -6,6 +6,11 @@ name: Monitor
 # * the full report is uploaded only encrypted with the REPORT_PASSPHRASE secret.
 # Decrypt locally (after unzipping the downloaded artifact):
 #   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in monitor-report.tar.gz.enc | tar xz
+#
+# Alerting: warnings/failures open a GitHub issue (label monitor-<suite>);
+# GitHub emails the repository owner. Comments (= emails) only when the set of
+# problems changes; the issue closes itself when everything passes again.
+# The job itself fails only when the monitor could not run.
 
 on:
   schedule:
@@ -24,11 +29,12 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       MONITOR_REDACT: "1"
     steps:
@@ -55,11 +61,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "*/15 * * * *" ]; then
             echo "args=--suite quick" >> "$GITHUB_OUTPUT"
+            echo "name=quick" >> "$GITHUB_OUTPUT"
           elif [ -n "${{ github.event.inputs.suite }}" ]; then
             echo "args=--suite ${{ github.event.inputs.suite }}" >> "$GITHUB_OUTPUT"
+            echo "name=${{ github.event.inputs.suite }}" >> "$GITHUB_OUTPUT"
             echo "browser=1" >> "$GITHUB_OUTPUT"
           else
             echo "args=" >> "$GITHUB_OUTPUT"
+            echo "name=full" >> "$GITHUB_OUTPUT"
             echo "browser=1" >> "$GITHUB_OUTPUT"
           fi
 
@@ -68,7 +77,17 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Run monitor
-        run: python -m monitor run --site site --redact ${{ steps.sel.outputs.args }}
+        id: run
+        run: |
+          set +e
+          python -m monitor run --site site --redact ${{ steps.sel.outputs.args }}
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Alert via GitHub issue
+        if: always() && steps.run.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m monitor.alerts reports/site/latest.json --suite "${{ steps.sel.outputs.name }}"
 
       - name: Encrypt report
         if: always()
@@ -93,3 +112,9 @@ jobs:
           name: monitor-report-${{ github.run_id }}
           path: monitor-report.tar.gz.enc
           retention-days: 14
+
+      - name: Fail if the monitor could not run
+        if: steps.run.outputs.code == '2' || steps.run.outputs.code == ''
+        run: |
+          echo "::error::The monitor did not run (configuration error or crash)"
+          exit 1

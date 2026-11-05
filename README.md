@@ -111,7 +111,13 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in monitor-report.tar.gz.enc |
 open reports/site/*/report.html
 ```
 
-Failed runs fail the job, so GitHub's normal workflow notifications act as alerting. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable them on the Actions tab.
+**Email alerts.** When a run finds warnings or failures, the workflow opens a GitHub issue labelled `monitor-<suite>`, and GitHub emails you as the repository owner at your account's notification address. No address is stored anywhere.
+- A comment, and so an email, is added only when the set of problems changes.
+- The issue closes itself, with a final email, once everything passes again.
+- The issue shows only the verdict and counts.
+- The job itself fails only when the monitor could not run, which triggers GitHub's normal failed-workflow email.
+
+Make sure you watch the repository and have email notifications enabled under GitHub → Settings → Notifications. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable them on the Actions tab.
 
 ## Public repositories
 
