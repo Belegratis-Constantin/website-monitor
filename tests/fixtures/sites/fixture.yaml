@@ -1,0 +1,89 @@
+# Profile for the local fixture site (tests/fixture_server.py).
+name: Fixture Club
+base_url: "${FIXTURE_BASE_URL}"
+timeout_seconds: 10
+request_delay_ms: 0
+retries: 0
+paths: [/, /about.html, /contact.html]
+safety:
+  block_urls: ["**/api/send.php*"]
+suites:
+  quick: [uptime, form_endpoint]
+checks:
+  uptime: {max_response_time_ms: 2000}
+  redirects:
+    rules:
+      - {from: /old, to: /about.html, status: 301}
+      - {from: /about.html, expect_status: 200}
+  links: {max_pages: 10}
+  assets: {}
+  seo: {}
+  content:
+    required:
+      /: ["Fixture Club"]
+  accessibility: {}
+  exposure: {}
+  form_endpoint:
+    probes:
+      - {name: get, method: GET, expect_status: 405, expect_json: {ok: false}}
+      - name: foreign-origin
+        headers: {Origin: "https://evil.invalid"}
+        data: {form_type: contact}
+        expect_status: 403
+        safe_because: origin check
+      - name: honeypot
+        headers: {Origin: "{origin}"}
+        data: {website: x, form_type: probe, ts: "{now_ms}", name: n, email: a@example.invalid}
+        expect_status: 200
+        expect_json: {ok: true}
+        safe_because: honeypot, plus fresh ts and unknown form type
+      - name: time-trap
+        headers: {Origin: "{origin}"}
+        data: {form_type: probe, ts: "{now_ms}"}
+        expect_status: 422
+        expect_json: {message: Submission rejected}
+        safe_because: time-trap
+  browser:
+    viewports: [desktop]
+    settle_ms: 100
+    networkidle_timeout_ms: 2000
+  forms:
+    timeout_ms: 4000
+    validation_wait_ms: 500
+    forms:
+      - name: contact
+        path: /contact.html
+        form: "#contact-form"
+        endpoint: "**/api/send.php*"
+        submit: "#c-submit"
+        honeypot: "#c-website"
+        fields:
+          "#c-name": Monitor
+          "#c-email": monitor@example.invalid
+          "#c-topic": {select_index: 1}
+        required_fields: ["#c-name", "#c-email", "#c-topic"]
+        invalid_values: [{field: "#c-email", value: nope}]
+        expect_payload: {form_type: contact, name: Monitor, website: ""}
+        expect_payload_keys: [ts]
+        success: [{selector: "#success", text: "Thanks, Monitor"}, {selector: "#form-inner", state: hidden}]
+        error: [{selector: "#c-submit", has_class: is-error, text: "Try again"}]
+        live_payload_overrides: {ts: "{now_ms}", form_type: monitor-probe}
+        scenarios: [structure, validation, mock_success, mock_error, mock_network_error, live_honeypot]
+  interactions:
+    interactions:
+      - name: menu
+        path: /
+        steps:
+          - expect_hidden: "#nav"
+          - click: ".menu-toggle"
+          - expect_attribute: {selector: ".menu-toggle", name: aria-expanded, value: "true"}
+          - expect_visible: "#nav a[href='/about.html']"
+      - name: theme
+        path: /
+        steps:
+          - remember: {selector: html, name: data-theme}
+          - click: ".theme-toggle"
+          - expect_attribute: {selector: html, name: data-theme, changes: true}
+  axe:
+    paths: [/]
+    fail_on_impact: critical

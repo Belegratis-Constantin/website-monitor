@@ -1,0 +1,95 @@
+name: Monitor
+
+# Public-repo safe:
+# * the site profile comes from the MONITOR_PROFILE secret (never committed),
+# * logs and the job summary only show the verdict and counts (--redact),
+# * the full report is uploaded only encrypted with the REPORT_PASSPHRASE secret.
+# Decrypt locally (after unzipping the downloaded artifact):
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in monitor-report.tar.gz.enc | tar xz
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # quick: uptime, TLS, mailer guards
+    - cron: "23 * * * *"     # full: everything incl. browser, forms (mocked + honeypot), axe
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Suite from the profile (e.g. quick, http, browser); empty = all enabled checks"
+        default: ""
+        required: false
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MONITOR_REDACT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Write private profile
+        env:
+          MONITOR_PROFILE: ${{ secrets.MONITOR_PROFILE }}
+        run: |
+          if [ -z "$MONITOR_PROFILE" ]; then
+            echo "::error::Secret MONITOR_PROFILE is not set (paste the site's YAML profile as a repository secret)"
+            exit 1
+          fi
+          mkdir -p config/private
+          printf '%s\n' "$MONITOR_PROFILE" > config/private/site.yaml
+
+      - name: Select suite
+        id: sel
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "*/15 * * * *" ]; then
+            echo "args=--suite quick" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.inputs.suite }}" ]; then
+            echo "args=--suite ${{ github.event.inputs.suite }}" >> "$GITHUB_OUTPUT"
+            echo "browser=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=" >> "$GITHUB_OUTPUT"
+            echo "browser=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Chromium
+        if: steps.sel.outputs.browser == '1'
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run monitor
+        run: python -m monitor run --site site --redact ${{ steps.sel.outputs.args }}
+
+      - name: Encrypt report
+        if: always()
+        id: enc
+        env:
+          REPORT_PASSPHRASE: ${{ secrets.REPORT_PASSPHRASE }}
+        run: |
+          rm -f config/private/site.yaml
+          if [ -z "$REPORT_PASSPHRASE" ] || [ ! -d reports ]; then
+            echo "No REPORT_PASSPHRASE secret (or no report): report is not uploaded."
+            exit 0
+          fi
+          tar czf - reports | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -pass env:REPORT_PASSPHRASE -out monitor-report.tar.gz.enc
+          rm -rf reports
+          echo "upload=1" >> "$GITHUB_OUTPUT"
+
+      - name: Upload encrypted report
+        if: always() && steps.enc.outputs.upload == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-report-${{ github.run_id }}
+          path: monitor-report.tar.gz.enc
+          retention-days: 14

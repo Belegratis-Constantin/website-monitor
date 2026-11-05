@@ -1,0 +1,12 @@
+reports/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env
+.idea/workspace.xml
+# private site profiles (see config/private/README.md)
+config/private/*
+!config/private/README.md
