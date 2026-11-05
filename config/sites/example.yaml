@@ -1,29 +1,78 @@
+# Template for a new site. Copy to config/sites/<name>.yaml and adjust.
+# Every check block that exists is enabled unless it says `enabled: false`.
+# Options of every check are documented at the top of monitor/checks/<check>.py.
+
 name: Example Website
-base_url: "https://example.com"
+base_url: "${EXAMPLE_BASE_URL:-https://example.com}"
 timeout_seconds: 20
-user_agent: "WebsiteMonitor/1.0"
+request_delay_ms: 300            # be gentle: many hosts ban IPs that send bursts
+user_agent: "WebsiteMonitor/2.0 (+https://example.com/contact)"
 paths:
   - /
+
+# Requests the browser must never make (form mailers, payment, analytics …).
+safety:
+  block_urls: []                 # e.g. ["**/api/contact*"]
+
+suites:
+  quick: [uptime, ssl]
+
 checks:
   uptime:
-    enabled: true
-    max_response_time_ms: 3000
     expected_status: 200
-  links:
-    enabled: true
-    max_pages: 5
-    max_links: 50
-    check_external: false
-  headers:
-    enabled: true
-  seo:
-    enabled: true
+    max_response_time_ms: 3000
   ssl:
-    enabled: true
     warn_days_before_expiry: 21
-  browser:
-    enabled: true
-    headless: true
-    navigation_timeout_ms: 30000
-    paths:
-      - /
+  redirects:
+    enforce_https: true
+    # canonical_host: example.com
+    # aliases: [www.example.com]
+  links:
+    max_pages: 10
+    max_links: 100
+  assets: {}
+  headers: {}
+  seo: {}
+  content:
+    required:
+      /: ["Example Domain"]
+  accessibility: {}
+  exposure: {}
+  performance:
+    enabled: false
+  browser: {}
+
+  # ── Forms without sending mail ────────────────────────────────────────────
+  # form_endpoint:
+  #   url: /api/contact.php
+  #   probes:
+  #     - {name: get-rejected, method: GET, expect_status: 405}
+  #     - name: honeypot
+  #       data: {website: bot, email: monitor@example.invalid}
+  #       expect_status: 200
+  #       safe_because: "honeypot filled → server drops the message"
+  #
+  # forms:
+  #   forms:
+  #     - name: contact
+  #       path: /contact
+  #       form: "#contact-form"
+  #       endpoint: "**/api/contact.php*"
+  #       honeypot: "#website"
+  #       fields: {"#name": Monitor, "#email": monitor@example.invalid}
+  #       required_fields: ["#name", "#email"]
+  #       success: {selector: ".form-success", text: "Thank you"}
+  #       error: {selector: ".form-error"}
+  #       scenarios: [structure, validation, mock_success, mock_error, mock_network_error]
+  #
+  # interactions:
+  #   interactions:
+  #     - name: mobile-menu
+  #       path: /
+  #       viewport: mobile
+  #       steps:
+  #         - click: ".menu-toggle"
+  #         - expect_visible: "nav"
+  #
+  # axe:
+  #   fail_on_impact: serious

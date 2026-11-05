@@ -1,5 +1,10 @@
-from monitor.checks import available_checks
+from monitor.checks import CHECKS, get_check
 
-def test_expected_modules_registered():
-    expected = {"uptime", "links", "assets", "headers", "seo", "content", "ssl", "accessibility", "browser"}
-    assert expected.issubset(set(available_checks()))
+
+def test_every_check_module_exposes_run():
+    for name in CHECKS:
+        assert callable(get_check(name).run), name
+
+
+def test_browser_flags():
+    assert {n for n, info in CHECKS.items() if info.browser} == {"browser", "forms", "interactions", "axe"}

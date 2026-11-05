@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contact — Fixture Club test site</title>
+  <meta name="description" content="Contact form of the fixture site; it posts to a fake mailer that records deliveries.">
+  <link rel="canonical" href="__BASE__/contact.html">
+  <meta property="og:title" content="Contact the Fixture Club">
+  <meta property="og:description" content="Contact page of the fixture site.">
+  <meta property="og:image" content="__BASE__/assets/logo.svg">
+  <meta property="og:url" content="__BASE__/contact.html">
+  <link rel="stylesheet" href="/assets/style-Ab12Cd34.css">
+  <script type="module" src="/assets/contact-Ab12Cd34.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Contact</h1>
+    <div id="form-inner">
+      <form id="contact-form" novalidate>
+        <input type="hidden" name="form_type" value="contact">
+        <input type="hidden" name="ts" id="c-ts">
+        <div class="hp-field" aria-hidden="true">
+          <label for="c-website">Website</label>
+          <input id="c-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <label for="c-name">Name</label>
+        <input id="c-name" name="name" required>
+        <label for="c-email">Email</label>
+        <input id="c-email" name="email" type="email" required>
+        <label for="c-topic">Topic</label>
+        <select id="c-topic" name="topic" required><option value="">Choose…</option></select>
+        <button type="submit" id="c-submit">Send</button>
+      </form>
+    </div>
+    <div id="success" class="hidden" role="status" hidden>Thanks, <span id="success-name"></span>.</div>
+  </main>
+</body>
+</html>
