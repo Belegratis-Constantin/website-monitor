@@ -18,6 +18,10 @@ from monitor.models import CheckResult, RunReport, Status
 log = logging.getLogger("monitor")
 
 
+class HostUnreachableDuringRun(RuntimeError):
+    pass
+
+
 def resolve_selection(site: dict[str, Any], *, checks: Iterable[str] | None = None,
                       suite: str | None = None, exclude: Iterable[str] = ()) -> list[str]:
     """Which checks to run: explicit list > suite > every enabled check in the profile."""
@@ -49,7 +53,15 @@ def run_checks(site: dict[str, Any], names: list[str], output_dir: Path, *, head
             check_started = time.perf_counter()
             log.info("running %s", name)
             try:
+                if CHECKS[name].browser and ctx.http.circuit_open(site["base_url"]):
+                    # The host stopped accepting connections earlier in this run (outage or
+                    # IP ban); dozens of identical browser timeouts would only add noise.
+                    raise HostUnreachableDuringRun(
+                        f"not run: {site['base_url']} stopped accepting connections earlier in this run "
+                        "(outage, or the monitor's IP was blocked)")
                 produced = list(get_check(name).run(ctx, options))
+            except HostUnreachableDuringRun as exc:
+                produced = [CheckResult(name, site["base_url"], Status.FAIL, str(exc))]
             except BrowserUnavailable as exc:
                 produced = [CheckResult(name, site["base_url"], Status.ERROR, str(exc))]
             except Exception as exc:  # a crashing check must not stop the run

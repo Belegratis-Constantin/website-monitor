@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import threading
 import time
@@ -135,6 +136,11 @@ class HttpClient:
         self._connect_failures[host] = 0
         return response
 
+    def circuit_open(self, url: str) -> bool:
+        """True once this run has given up on the URL's host after repeated connection failures."""
+        host = urlparse(join_url(self.base_url, url)).netloc.lower()
+        return self._connect_failures.get(host, 0) >= self.circuit_threshold
+
     def get(self, url: str, *, cached: bool = True, **kwargs: Any) -> requests.Response:
         url = join_url(self.base_url, url)
         if cached and not kwargs and url in self._cache:
@@ -191,7 +197,8 @@ def describe_error(exc: BaseException) -> str:
     if isinstance(exc, requests.exceptions.ReadTimeout):
         return "server accepted the connection but did not answer in time"
     if isinstance(exc, requests.exceptions.SSLError):
-        return f"TLS error: {text[:200]}"
+        m = re.search(r"certificate verify failed: (.+?)(?:\s*\(_ssl|\"\)|$)", text)
+        return f"TLS error: {m.group(1).strip()}" if m else f"TLS error: {text[-200:]}"
     if isinstance(exc, requests.exceptions.ConnectionError):
         if "Name or service not known" in text or "nodename nor servname" in text or "getaddrinfo" in text:
             return "DNS lookup failed"

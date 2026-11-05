@@ -16,6 +16,7 @@ on:
   schedule:
     - cron: "*/15 * * * *"   # quick: uptime, TLS, mailer guards
     - cron: "23 * * * *"     # full: everything incl. browser, forms (mocked + honeypot), axe
+    - cron: "41 3 * * *"     # security: sensitive-file probes, alone (hosts may ban probing IPs)
   workflow_dispatch:
     inputs:
       suite:
@@ -62,6 +63,9 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "*/15 * * * *" ]; then
             echo "args=--suite quick" >> "$GITHUB_OUTPUT"
             echo "name=quick" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "41 3 * * *" ]; then
+            echo "args=--suite security" >> "$GITHUB_OUTPUT"
+            echo "name=security" >> "$GITHUB_OUTPUT"
           elif [ -n "${{ github.event.inputs.suite }}" ]; then
             echo "args=--suite ${{ github.event.inputs.suite }}" >> "$GITHUB_OUTPUT"
             echo "name=${{ github.event.inputs.suite }}" >> "$GITHUB_OUTPUT"
