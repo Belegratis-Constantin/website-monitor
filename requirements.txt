@@ -1,0 +1,6 @@
+requests>=2.32,<3
+beautifulsoup4>=4.12,<5
+PyYAML>=6.0,<7
+python-dotenv>=1.0,<2
+playwright>=1.50,<2
+pytest>=8,<9

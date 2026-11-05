@@ -1,0 +1,29 @@
+name: Example Website
+base_url: "https://example.com"
+timeout_seconds: 20
+user_agent: "WebsiteMonitor/1.0"
+paths:
+  - /
+checks:
+  uptime:
+    enabled: true
+    max_response_time_ms: 3000
+    expected_status: 200
+  links:
+    enabled: true
+    max_pages: 5
+    max_links: 50
+    check_external: false
+  headers:
+    enabled: true
+  seo:
+    enabled: true
+  ssl:
+    enabled: true
+    warn_days_before_expiry: 21
+  browser:
+    enabled: true
+    headless: true
+    navigation_timeout_ms: 30000
+    paths:
+      - /
