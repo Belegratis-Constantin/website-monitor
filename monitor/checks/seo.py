@@ -32,6 +32,11 @@ def _norm(url: str) -> str:
     return f"{p.netloc.lower()}{path}"
 
 
+def _is_noindex(soup) -> bool:
+    robots = soup.find("meta", attrs={"name": "robots"})
+    return bool(robots and "noindex" in (robots.get("content") or "").lower())
+
+
 def _page_issues(ctx, page, options, seen_titles, seen_desc, og_images) -> list[str]:
     soup = page.soup
     issues: list[str] = []
@@ -45,11 +50,13 @@ def _page_issues(ctx, page, options, seen_titles, seen_desc, og_images) -> list[
         issues.append(f"title length {len(title)} outside {tmin}–{tmax}: '{title}'")
     seen_titles[title].append(page.url)
 
+    noindex = _is_noindex(soup)
     desc_tag = soup.find("meta", attrs={"name": "description"})
     desc = (desc_tag.get("content") or "").strip() if desc_tag else ""
     if not desc:
-        issues.append("missing meta description")
-    elif not dmin <= len(desc) <= dmax:
+        if not noindex:
+            issues.append("missing meta description")
+    elif not noindex and not dmin <= len(desc) <= dmax:
         issues.append(f"meta description length {len(desc)} outside {dmin}–{dmax}")
     if desc:
         seen_desc[desc].append(page.url)
@@ -75,12 +82,11 @@ def _page_issues(ctx, page, options, seen_titles, seen_desc, og_images) -> list[
     if not soup.find("meta", attrs={"name": "viewport"}):
         issues.append("missing viewport meta tag")
 
-    robots = soup.find("meta", attrs={"name": "robots"})
-    if robots and "noindex" in robots.get("content", "").lower():
-        if urlparse(page.url).path not in options.get("noindex_allowed", []):
-            issues.append("page is marked noindex")
+    if noindex and urlparse(page.url).path not in options.get("noindex_allowed", []):
+        issues.append("page is marked noindex (list it in noindex_allowed if intended)")
 
-    if options.get("require_og", True):
+    # Snippet length and Open Graph only matter for pages meant to be found/shared.
+    if options.get("require_og", True) and not noindex:
         for prop in ("og:title", "og:description", "og:image", "og:url"):
             if not soup.find("meta", property=prop):
                 issues.append(f"missing {prop}")
@@ -132,6 +138,8 @@ def _robots_and_sitemap(ctx, options) -> list[CheckResult]:
             issues = []
             listed = {_norm(u) for u in locs}
             for path in ctx.paths:
+                if path in options.get("_noindex_paths", set()):
+                    continue  # noindex pages belong outside the sitemap
                 if _norm(ctx.url(path)) not in listed:
                     issues.append(f"{path} is monitored but not in the sitemap")
             for loc in locs[: int(options.get("sitemap_max_urls", 50))]:
@@ -164,6 +172,7 @@ def run(ctx, options):
     seen_titles: dict[str, list[str]] = defaultdict(list)
     seen_desc: dict[str, list[str]] = defaultdict(list)
     og_images: dict[str, list[str]] = defaultdict(list)
+    noindex_paths: set[str] = set()
 
     for path in ctx.paths:
         url = ctx.url(path)
@@ -175,6 +184,8 @@ def run(ctx, options):
         if page.status >= 400 or not page.is_html:
             results.append(CheckResult("seo", url, Status.SKIP, f"HTTP {page.status}; not analysed"))
             continue
+        if _is_noindex(page.soup):
+            noindex_paths.add(path)
         issues = _page_issues(ctx, page, options, seen_titles, seen_desc, og_images)
         results.append(issues_result("seo", url, issues, "SEO metadata OK", severity=severity))
 
@@ -198,5 +209,5 @@ def run(ctx, options):
                            "serve a real 404 page (ErrorDocument 404)")
     results.append(issues_result("seo", f"{ctx.base_url} (site-wide)", site_issues,
                                  "No duplicate titles/descriptions; og:images load; real 404s", severity=severity))
-    results += _robots_and_sitemap(ctx, options)
+    results += _robots_and_sitemap(ctx, {**options, "_noindex_paths": noindex_paths})
     return results

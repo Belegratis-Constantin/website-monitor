@@ -133,3 +133,23 @@ def test_circuit_breaker_stops_hammering_unreachable_host(site):
     except HostUnreachable:
         pass
     assert time.perf_counter() - started < 0.1
+
+
+def test_seo_noindex_pages_need_no_snippet_og_or_sitemap(site, run):
+    site["paths"] = ["/", "/legal.html"]
+    results = {r.target: r for r in run("seo", noindex_allowed=["/legal.html"])}
+    legal = next(r for t, r in results.items() if t.endswith("/legal.html"))
+    assert legal.status == Status.PASS, legal.details
+    sitemap = next(r for t, r in results.items() if t.endswith("sitemap.xml"))
+    assert not any("legal.html" in d for d in sitemap.details)
+    flagged = {r.target: r for r in run("seo", noindex_allowed=[])}
+    assert any("noindex" in d for r in flagged.values() if r.target.endswith("/legal.html") for d in r.details)
+
+
+def test_browser_checks_not_run_after_host_became_unreachable(site, tmp_path):
+    from monitor.runner import run_checks
+    site = {**site, "base_url": "http://127.0.0.1:9", "connect_timeout_seconds": 1, "circuit_breaker_failures": 1}
+    report = run_checks(site, ["uptime", "browser", "forms"], tmp_path)
+    by_check = {r.check: r for r in report.results if r.check != "uptime"}
+    assert set(by_check) == {"browser", "forms"}
+    assert all(r.status == Status.FAIL and "stopped accepting connections" in r.message for r in by_check.values())
